@@ -12,6 +12,8 @@ Desde la raíz del proyecto: `python scripts/init_env.py`, luego `docker compose
 
 El reporte `artifacts/e2e.json` incluye nombres de escenarios y resultado, sin secretos. La evidencia Java reside en `target/surefire-reports` y `target/site/jacoco`.
 
+Compose utiliza por defecto la subred `10.241.110.0/24`, evitando depender de los pools automáticos de Docker. Antes del primer arranque comprueba que no se solape con redes o VPN existentes; puedes cambiarla con `COMPOSE_SUBNET` en `.env`. El volumen y servicios pertenecen al proyecto `service-request-platform`.
+
 ## Salud y diagnóstico
 
 - `/actuator/health/liveness` valida el proceso; un corte DB no provoca reinicios de aplicación por liveness.

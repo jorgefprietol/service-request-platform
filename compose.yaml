@@ -55,3 +55,8 @@ services:
         max-file: "3"
 volumes:
   request-data:
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${COMPOSE_SUBNET:-10.241.110.0/24}
