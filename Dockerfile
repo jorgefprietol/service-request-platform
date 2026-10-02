@@ -6,7 +6,7 @@ RUN --mount=type=cache,target=/root/.m2 mvn -B -ntp dependency:resolve
 COPY src ./src
 RUN --mount=type=cache,target=/root/.m2 mvn -B -ntp -DskipTests package
 
-FROM eclipse-temurin:21-jre-alpine@sha256:51ab5e3302e7141ce665ca3ea85e8b5cd648eafbc3c0c90dd79d6537684e4555
+FROM eclipse-temurin:25-jre-alpine@sha256:3c0a9084927a221ccd1d007fcaf614465672c0af37aaa834c5184483afe56d61
 ARG SOURCE_REVISION=local
 LABEL org.opencontainers.image.title="Service Request Platform" \
       org.opencontainers.image.source="https://github.com/jorgefprietol/service-request-platform" \
