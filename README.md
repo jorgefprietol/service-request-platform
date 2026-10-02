@@ -1,5 +1,7 @@
 # Service Request Platform
 
+[![CI and container delivery](https://github.com/jorgefprietol/service-request-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/jorgefprietol/service-request-platform/actions/workflows/ci.yml)
+
 [![CI](https://github.com/jorgefprietol/service-request-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/jorgefprietol/service-request-platform/actions/workflows/ci.yml)
 
 Plataforma de operaciones para registrar solicitudes, asignar operadores, aplicar plazos de SLA y conservar una auditoría transaccional. Implementada en **Java 21, Spring Boot, PostgreSQL y OIDC**, con una consola web, contrato OpenAPI y entrega de contenedores mediante GitHub Actions.

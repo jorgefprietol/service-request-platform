@@ -33,7 +33,9 @@ classDiagram
         +UUID id
         +Status status
         +long version
+        +String assignedTo
         +transitionTo(Status) ServiceRequest
+        +assignTo(subject) ServiceRequest
         +overdueAt(Instant) boolean
     }
     class RequestFactory {
@@ -56,6 +58,14 @@ classDiagram
         +execute(action)
     }
     class RequestService
+    class AssignmentService
+    class OperatorDirectory {
+        <<interface>>
+    }
+    class SlaAlertStore {
+        <<interface>>
+    }
+    class SlaMonitor
     class JdbcRequestStore
     class SpringUnitOfWork
     RequestTemplate *-- RequestDraft : prototype
@@ -66,6 +76,10 @@ classDiagram
     RequestService --> RequestFactory
     RequestService --> RequestStore
     RequestService --> UnitOfWork
+    AssignmentService --> RequestStore
+    AssignmentService --> UnitOfWork
+    AssignmentService --> OperatorDirectory
+    SlaMonitor --> SlaAlertStore
     JdbcRequestStore ..|> RequestStore
     SpringUnitOfWork ..|> UnitOfWork
 ```

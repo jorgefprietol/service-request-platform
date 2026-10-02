@@ -60,7 +60,7 @@ Los permisos se derivan de roles del JWT validado. El directorio de asignación 
 
 Distribución propuesta de 100 puntos: integridad/idempotencia 25, flujo/concurrencia 20, permisos 20, persistencia/auditoría 20, plantillas 8, consola/documentación 7. Es una decisión de diseño del autor, pendiente de validación por stakeholders en una adopción.
 
-Matriz de Eisenhower: integridad y seguridad son importantes y urgentes para la primera entrega; observabilidad avanzada e identidad federada son importantes y se planifican; detalles visuales secundarios no bloquean el núcleo; facturación queda descartada por alcance.
+Matriz de Eisenhower: integridad, identidad y seguridad son importantes y urgentes para la primera entrega; observabilidad avanzada y sincronización del directorio son importantes y se planifican; detalles visuales secundarios no bloquean el núcleo; facturación queda descartada por alcance.
 
 ## Casos de uso
 
@@ -72,6 +72,12 @@ UC-03 — Reutilizar plantilla. Precondición: plantilla existente. Flujo: insta
 
 UC-04 — Recuperar operación. Precondición: volumen de datos conservado. Flujo: reiniciar API o DB, completar probes, consultar solicitud y repetir clave previa. Poscondición: identidad, revisiones y auditoría conservadas.
 
+UC-05 — Ingresar con identidad. Flujo: iniciar Authorization Code con PKCE, verificar estado, intercambiar el código y consultar identidad validada. Poscondición: propietario y actor corresponden al subject; el rol determina permisos. Alternativas: firma, emisor, audiencia o vigencia inválidos producen 401.
+
+UC-06 — Asignar atención. Precondición: operador autenticado, destinatario registrado y revisión vigente. Flujo: validar destinatario, actualizar asignación y registrar actor y subject asignado en una transacción. Alternativas: destinatario desconocido produce 400; revisión obsoleta, 409; asignación idéntica no crea otra revisión.
+
+UC-07 — Detectar SLA vencido. Flujo: el monitor identifica solicitudes OPEN/IN_PROGRESS vencidas y persiste una detección única. El operador consulta alertas activas con la asignación vigente. Poscondición: el reinicio conserva la detección; los estados terminales dejan de aparecer como alertas activas.
+
 ```mermaid
 flowchart LR
     S[Solicitante] --> C((Registrar solicitud))
@@ -80,6 +86,10 @@ flowchart LR
     T --> C
     O[Operador] --> Q2((Consultar bandeja completa))
     O --> A((Atender / reabrir / cerrar))
+    O --> AS((Asignar operador))
+    O --> SL((Consultar alertas SLA))
+    S --> I((Ingresar con identidad OIDC))
+    O --> I
     A --> V((Validar versión))
     A --> H((Registrar auditoría))
     M[Mantenedor] --> D((Verificar y entregar imagen))
