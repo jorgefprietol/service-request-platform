@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Service Request Platform</title><link rel="stylesheet" href="/styles.css"><script src="/app.js" defer></script></head>
+<body>
+  <header><span class="brand">SR / OPERACIONES</span><a href="/openapi.yaml">Contrato API</a></header>
+  <main>
+    <section class="intro"><p class="eyebrow">SERVICE REQUEST PLATFORM</p><h1>Solicitudes claras.<br>Operaciones trazables.</h1><p>Registra necesidades, controla plazos y conserva el historial de cada decisión.</p></section>
+    <section class="panel"><h2>Conectar al espacio de trabajo</h2><form id="connect"><label for="token">Credencial de acceso</label><div class="row"><input id="token" type="password" autocomplete="off" required minlength="32" placeholder="Token de solicitante u operador"><button>Conectar</button><button type="button" id="disconnect" class="secondary">Desconectar</button></div><p class="muted">La credencial permanece únicamente en la memoria de esta pestaña.</p></form></section>
+    <p id="message" role="status" aria-live="polite">Conecta una credencial para consultar las solicitudes.</p>
+    <div class="layout"><section class="panel"><h2>Nueva solicitud</h2><form id="create">
+      <label for="template">Tipo de solicitud</label><select id="template"><option value="">Personalizada</option><option value="access">Provisión de acceso</option><option value="incident">Interrupción de servicio</option></select>
+      <label for="title">Título</label><input id="title" required minlength="3" maxlength="120">
+      <label for="description">Descripción</label><textarea id="description" maxlength="2000" rows="4" required></textarea>
+      <label for="priority">Prioridad</label><select id="priority"><option>NORMAL</option><option>LOW</option><option>HIGH</option><option>CRITICAL</option></select>
+      <button id="submit">Registrar solicitud</button>
+    </form></section><section class="panel"><div class="row heading"><h2>Bandeja de solicitudes</h2><button id="refresh" class="secondary">Actualizar</button></div><p class="muted">Últimas 50 solicitudes visibles para esta credencial. Los cambios de estado requieren acceso de operador.</p><div id="requests" class="requests"><p class="empty">Sin solicitudes cargadas.</p></div></section></div>
+  </main><footer>Java · PostgreSQL · Flujo con control de versión y auditoría</footer>
+</body></html>

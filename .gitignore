@@ -1,0 +1,8 @@
+/target/
+/artifacts/
+/backups/
+/.env
+/.idea/
+*.iml
+*.log
+__pycache__/

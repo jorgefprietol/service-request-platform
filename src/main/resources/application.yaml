@@ -1,0 +1,41 @@
+spring:
+  application:
+    name: service-request-platform
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/requests}
+    username: ${DATABASE_USER:requests}
+    password: ${DATABASE_PASSWORD}
+    hikari:
+      maximum-pool-size: 8
+      connection-timeout: 5000
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+  servlet:
+    multipart:
+      enabled: false
+server:
+  shutdown: graceful
+  tomcat:
+    max-http-form-post-size: 16KB
+    max-swallow-size: 16KB
+  max-http-request-header-size: 16KB
+  error:
+    include-message: never
+    include-stacktrace: never
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+      group:
+        readiness:
+          include: readinessState,db
+platform:
+  requester-token: ${REQUESTER_TOKEN}
+  operator-token: ${OPERATOR_TOKEN}

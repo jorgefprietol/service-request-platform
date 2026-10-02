@@ -1,0 +1,284 @@
+openapi: 3.0.3
+info:
+  title: Service Request Platform
+  version: 1.0.0
+  description: Durable service requests with scoped idempotency, optimistic concurrency and transactional audit.
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+paths:
+  /api/requests:
+    get:
+      operationId: listRequests
+      summary: List visible requests, newest first
+      parameters:
+        - in: query
+          name: limit
+          schema: {type: integer, minimum: 1, maximum: 100, default: 50}
+        - in: query
+          name: offset
+          schema: {type: integer, minimum: 0, default: 0}
+      responses:
+        '200':
+          description: Requester sees own requests; operator sees all requests
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/RequestView'}}
+        '400': {$ref: '#/components/responses/Invalid'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+    post:
+      operationId: createRequest
+      summary: Create a service request
+      parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateInput'}
+      responses:
+        '201': {$ref: '#/components/responses/Created'}
+        '200': {$ref: '#/components/responses/Replay'}
+        '400': {$ref: '#/components/responses/Invalid'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/requests/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/RequestId'}
+    get:
+      operationId: getRequest
+      summary: Read a visible request and its current version
+      responses:
+        '200':
+          description: Request with ETag
+          headers:
+            ETag: {schema: {type: string}, description: Quoted numeric revision}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RequestView'}
+        '400': {$ref: '#/components/responses/Invalid'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/requests/{id}/transitions:
+    parameters:
+      - {$ref: '#/components/parameters/RequestId'}
+    post:
+      operationId: transitionRequest
+      summary: Change state as operator, providing the current revision
+      parameters:
+        - in: header
+          name: If-Match
+          required: true
+          schema: {type: string, pattern: '^"[0-9]{1,18}"$', example: '"0"'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [status]
+              properties:
+                status: {$ref: '#/components/schemas/Status'}
+      responses:
+        '200':
+          description: Changed request and incremented ETag
+          headers:
+            ETag: {schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RequestView'}
+        '400': {$ref: '#/components/responses/Invalid'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '500': {$ref: '#/components/responses/Failure'}
+  /api/requests/{id}/history:
+    parameters:
+      - {$ref: '#/components/parameters/RequestId'}
+    get:
+      operationId: requestHistory
+      summary: Read the audit history of a visible request
+      responses:
+        '200':
+          description: Audit entries ordered by revision
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [version, action, actor, occurredAt]
+                  properties:
+                    version: {type: integer, format: int64}
+                    action: {type: string}
+                    actor: {type: string}
+                    occurredAt: {type: string, format: date-time}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/templates:
+    get:
+      operationId: listTemplates
+      summary: List immutable request prototypes
+      responses:
+        '200':
+          description: Available templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [id, name, prototype]
+                  properties:
+                    id: {type: string}
+                    name: {type: string}
+                    prototype: {$ref: '#/components/schemas/CreateInput'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/templates/{templateId}/requests:
+    post:
+      operationId: instantiateTemplate
+      summary: Create from a prototype with independent identity
+      parameters:
+        - in: path
+          name: templateId
+          required: true
+          schema: {type: string, enum: [access, incident]}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [title]
+              properties:
+                title: {type: string, minLength: 3, maxLength: 120}
+                description: {type: string, maxLength: 2000, nullable: true, description: Null or omitted uses the template description}
+      responses:
+        '201': {$ref: '#/components/responses/Created'}
+        '200': {$ref: '#/components/responses/Replay'}
+        '400': {$ref: '#/components/responses/Invalid'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /actuator/health/readiness:
+    get:
+      security: []
+      operationId: readiness
+      responses:
+        '200':
+          description: Application and database ready
+        '503':
+          description: Application or database unavailable
+  /actuator/health/liveness:
+    get:
+      security: []
+      operationId: liveness
+      responses:
+        '200':
+          description: Process is live
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Distinct configured machine tokens for requester and operator roles
+  parameters:
+    RequestId:
+      in: path
+      name: id
+      required: true
+      schema: {type: string, format: uuid}
+    IdempotencyKey:
+      in: header
+      name: Idempotency-Key
+      required: true
+      schema: {type: string, pattern: '^[A-Za-z0-9_-]{8,128}$'}
+      description: Scoped to principal; same normalized content returns the current request, different content conflicts
+  schemas:
+    Priority: {type: string, enum: [LOW, NORMAL, HIGH, CRITICAL]}
+    Status: {type: string, enum: [OPEN, IN_PROGRESS, RESOLVED, CLOSED, CANCELLED]}
+    CreateInput:
+      type: object
+      additionalProperties: false
+      required: [title, description, priority]
+      properties:
+        title: {type: string, minLength: 3, maxLength: 120}
+        description: {type: string, minLength: 1, maxLength: 2000}
+        priority: {$ref: '#/components/schemas/Priority'}
+    ServiceRequest:
+      type: object
+      required: [id, title, description, priority, status, owner, createdAt, slaDueAt, version]
+      properties:
+        id: {type: string, format: uuid}
+        title: {type: string}
+        description: {type: string}
+        priority: {$ref: '#/components/schemas/Priority'}
+        status: {$ref: '#/components/schemas/Status'}
+        owner: {type: string}
+        createdAt: {type: string, format: date-time}
+        slaDueAt: {type: string, format: date-time}
+        version: {type: integer, format: int64, minimum: 0}
+    RequestView:
+      type: object
+      required: [request, overdue]
+      properties:
+        request: {$ref: '#/components/schemas/ServiceRequest'}
+        overdue: {type: boolean}
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: {type: string}
+        title: {type: string}
+        status: {type: integer}
+        detail: {type: string}
+        instance: {type: string}
+  responses:
+    Created:
+      description: Created once; audit version zero persisted in the same transaction
+      headers:
+        Location: {schema: {type: string}}
+        ETag: {schema: {type: string}}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/RequestView'}
+    Replay:
+      description: Existing current request returned; no additional creation audit
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/RequestView'}
+    Invalid:
+      description: Validation, malformed header or disallowed lifecycle transition
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    Unauthorized:
+      description: Missing or invalid bearer token
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    Forbidden:
+      description: Operator role required
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    NotFound:
+      description: Resource absent or outside the principal visibility scope
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    Conflict:
+      description: Reused key with different content or stale version; reload or retry with the same creation key
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    Failure:
+      description: Transaction failed; request mutation rolled back
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}

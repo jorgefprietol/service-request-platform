@@ -1,0 +1,137 @@
+name: CI and container delivery
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Java quality (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Verify domain, HTTP, transactions and architecture boundaries
+        run: mvn -B -ntp verify
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: java-evidence-${{ matrix.os }}
+          path: |
+            target/surefire-reports/
+            target/site/jacoco/
+          retention-days: 14
+
+  integration:
+    name: PostgreSQL and container verification
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      APP_IMAGE: service-request-platform:ci
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Validate workflow and initialize isolated credentials
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint@sha256:6f03470d0152251d7f07f7c4dc019dbe7024c72cd952f839544c7798843efa8f
+          python3 scripts/init_env.py
+          docker compose config --quiet
+      - name: Build once and start PostgreSQL stack
+        run: |
+          docker build --build-arg SOURCE_REVISION="${{ github.sha }}" -t "$APP_IMAGE" .
+          docker compose up -d --no-build --wait --wait-timeout 180
+      - name: Verify HTTP behavior, races, rollback, outage and restart recovery
+        run: python3 scripts/e2e.py
+      - name: Scan image and generate software bill of materials
+        run: |
+          mkdir -p artifacts/security
+          scanner='aquasec/trivy@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969'
+          docker run --rm -v "$PWD:/source:ro" "$scanner" fs --scanners secret --skip-dirs /source/.git --skip-files /source/.env --exit-code 1 /source
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v trivy-cache:/root/.cache/trivy -v "$PWD/artifacts/security:/reports" "$scanner" image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --format json --output /reports/vulnerabilities.json "$APP_IMAGE"
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD/artifacts/security:/reports" "$scanner" image --format cyclonedx --output /reports/sbom.cdx.json "$APP_IMAGE"
+      - name: Save exact verified image
+        if: github.event_name != 'pull_request'
+        run: docker save "$APP_IMAGE" | gzip > artifacts/image.tar.gz
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: github.event_name != 'pull_request'
+        with:
+          name: verified-image
+          path: artifacts/image.tar.gz
+          retention-days: 1
+      - name: Collect diagnostics and stop stack
+        if: always()
+        run: |
+          mkdir -p artifacts
+          docker compose ps -a > artifacts/compose-status.txt
+          docker compose logs --no-color > artifacts/compose-logs.txt
+          docker compose down --volumes
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: integration-evidence
+          path: |
+            artifacts/*.json
+            artifacts/*.txt
+            artifacts/security/
+          retention-days: 14
+
+  publish:
+    name: Publish verified image to GHCR
+    needs: integration
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    env:
+      REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
+      COMMIT_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: verified-image
+          path: release
+      - name: Publish exact tested image
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gzip -dc release/image.tar.gz | docker load
+          echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker tag service-request-platform:ci "$REGISTRY_IMAGE:sha-$COMMIT_SHA"
+          docker tag service-request-platform:ci "$REGISTRY_IMAGE:main"
+          docker push "$REGISTRY_IMAGE:sha-$COMMIT_SHA"
+          docker push "$REGISTRY_IMAGE:main"
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$REGISTRY_IMAGE:sha-$COMMIT_SHA" | cut -d@ -f2)
+          echo "IMAGE_DIGEST=$digest" >> "$GITHUB_ENV"
+          echo "Published: \`$REGISTRY_IMAGE@$digest\`" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        with:
+          subject-name: ${{ env.REGISTRY_IMAGE }}
+          subject-digest: ${{ env.IMAGE_DIGEST }}
+          push-to-registry: true
+      - name: End registry session
+        if: always()
+        run: docker logout ghcr.io

@@ -1,0 +1,57 @@
+name: service-request-platform
+services:
+  api:
+    image: ${APP_IMAGE:-service-request-platform:local}
+    build:
+      context: .
+      args:
+        SOURCE_REVISION: ${SOURCE_REVISION:-local}
+    environment:
+      DATABASE_URL: jdbc:postgresql://database:5432/requests
+      DATABASE_USER: requests
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:?Run python scripts/init_env.py}
+      REQUESTER_TOKEN: ${REQUESTER_TOKEN:?Run python scripts/init_env.py}
+      OPERATOR_TOKEN: ${OPERATOR_TOKEN:?Run python scripts/init_env.py}
+    ports:
+      - "127.0.0.1:${APP_PORT:-18110}:8080"
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 160
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+  database:
+    image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+    environment:
+      POSTGRES_DB: requests
+      POSTGRES_USER: requests
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?Run python scripts/init_env.py}
+    volumes:
+      - request-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U requests -d requests"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 100
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+volumes:
+  request-data:
