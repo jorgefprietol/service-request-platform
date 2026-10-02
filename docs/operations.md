@@ -56,6 +56,8 @@ No se declara un RPO/RTO operativo hasta verificar políticas y restauraciones e
 
 Se bloquean vulnerabilidades HIGH/CRITICAL con corrección disponible; las no corregibles se conservan en el SBOM y requieren revisión mediante análisis completo cuando se evalúe una adopción. El escáner de imagen analiza dependencias empaquetadas y el runtime. No se publica la imagen de build ni las dependencias de prueba.
 
+El modo `--offline-scan` evita consultas Maven adicionales durante la identificación de dependencias; la base de vulnerabilidades de Trivy continúa descargándose. El análisis usa metadatos de las bibliotecas incluidas en el JAR. `verify_sbom.py` bloquea la entrega si alguna biblioteca Java empaquetada falta en el SBOM, para detectar identificación incompleta. Esta distinción sigue la [documentación de Trivy para Java](https://trivy.dev/docs/latest/guide/coverage/language/java/).
+
 Imagen de entrega: `ghcr.io/jorgefprietol/service-request-platform:sha-<commit>`. Usa su digest para despliegues inmutables. GHCR controla el acceso al paquete independientemente de la visibilidad del repositorio; autentica tu cliente si el paquete requiere credenciales. No se configura un runner local ni se ejecutan contribuciones públicas en esta computadora.
 
 La procedencia se verifica con `gh attestation verify oci://ghcr.io/jorgefprietol/service-request-platform@sha256:<digest> -R jorgefprietol/service-request-platform`.

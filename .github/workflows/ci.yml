@@ -61,14 +61,17 @@ jobs:
           docker build --build-arg SOURCE_REVISION="${{ github.sha }}" -t "$APP_IMAGE" .
           docker compose up -d --no-build --wait --wait-timeout 180
       - name: Verify HTTP behavior, races, rollback, outage and restart recovery
-        run: python3 scripts/e2e.py
+        run: |
+          python3 scripts/e2e.py
+          docker compose cp api:/app/application.jar artifacts/application.jar
       - name: Scan image and generate software bill of materials
         run: |
           mkdir -p artifacts/security
           scanner='aquasec/trivy@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969'
-          docker run --rm -v "$PWD:/source:ro" "$scanner" fs --scanners secret --skip-dirs /source/.git --skip-files /source/.env --exit-code 1 /source
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v trivy-cache:/root/.cache/trivy -v "$PWD/artifacts/security:/reports" "$scanner" image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --format json --output /reports/vulnerabilities.json "$APP_IMAGE"
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD/artifacts/security:/reports" "$scanner" image --format cyclonedx --output /reports/sbom.cdx.json "$APP_IMAGE"
+          docker run --rm -v "$PWD:/source:ro" "$scanner" fs --offline-scan --scanners secret --skip-dirs /source/.git --skip-dirs /source/artifacts --skip-files /source/.env --exit-code 1 /source
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v trivy-cache:/root/.cache/trivy -v "$PWD/artifacts/security:/reports" "$scanner" image --offline-scan --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --format json --output /reports/vulnerabilities.json "$APP_IMAGE"
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v trivy-cache:/root/.cache/trivy -v "$PWD/artifacts/security:/reports" "$scanner" image --offline-scan --format cyclonedx --output /reports/sbom.cdx.json "$APP_IMAGE"
+          python3 scripts/verify_sbom.py
       - name: Save exact verified image
         if: github.event_name != 'pull_request'
         run: docker save "$APP_IMAGE" | gzip > artifacts/image.tar.gz

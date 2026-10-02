@@ -19,7 +19,7 @@ Las pruebas API usan H2 en modo PostgreSQL para verificación rápida. Las garan
 
 ## Integración y entrega
 
-La verificación end-to-end ejecuta `python scripts/e2e.py` con PostgreSQL real y genera `artifacts/e2e.json`. Las evidencias remotas se consultan en [GitHub Actions](https://github.com/jorgefprietol/service-request-platform/actions).
+La verificación end-to-end ejecuta `python scripts/e2e.py` con PostgreSQL real y genera `artifacts/e2e.json`. Se aprobaron **39 escenarios HTTP/PostgreSQL** en la ejecución [37051327988](https://github.com/jorgefprietol/service-request-platform/actions/runs/37051327988). Esa ejecución quedó cancelada al actualizar el build y su análisis de seguridad encontró un límite temporal de consultas Maven; no se considera una entrega completa aprobada. Las evidencias vigentes se consultan en [GitHub Actions](https://github.com/jorgefprietol/service-request-platform/actions).
 
 El pipeline conserva resultados JUnit, cobertura HTML/XML, reporte E2E, diagnósticos de contenedores, vulnerabilidades y SBOM. La publicación depende de que los jobs previos terminen correctamente. Una configuración de workflow por sí sola no acredita que un run haya sido aprobado: debe consultarse su estado y evidencia.
 
