@@ -1,0 +1,41 @@
+{
+  "realm": "service-requests",
+  "enabled": true,
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "accessTokenLifespan": 300,
+  "roles": {"realm": [{"name": "requester"}, {"name": "operator"}]},
+  "clients": [
+    {
+      "clientId": "service-request-console",
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["${APP_PUBLIC_URL}"],
+      "webOrigins": ["${APP_ORIGIN}"],
+      "attributes": {"pkce.code.challenge.method": "S256"},
+      "protocolMappers": [{"name":"api-audience","protocol":"openid-connect","protocolMapper":"oidc-audience-mapper","config":{"included.custom.audience":"service-request-api","access.token.claim":"true","id.token.claim":"false"}}]
+    },
+    {
+      "clientId": "service-request-verification",
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "protocolMappers": [{"name":"api-audience","protocol":"openid-connect","protocolMapper":"oidc-audience-mapper","config":{"included.custom.audience":"service-request-api","access.token.claim":"true","id.token.claim":"false"}}]
+    },
+    {
+      "clientId": "unrelated-verification",
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true
+    }
+  ],
+  "users": [
+    {"id":"11111111-0000-4000-8000-000000000001","username":"requester.one","email":"requester.one@example.test","emailVerified":true,"enabled":true,"firstName":"Requester","lastName":"One","realmRoles":["requester"],"credentials":[{"type":"password","value":"${IDENTITY_REQUESTER_PASSWORD}","temporary":false}]},
+    {"id":"11111111-0000-4000-8000-000000000002","username":"requester.two","email":"requester.two@example.test","emailVerified":true,"enabled":true,"firstName":"Requester","lastName":"Two","realmRoles":["requester"],"credentials":[{"type":"password","value":"${IDENTITY_SECOND_REQUESTER_PASSWORD}","temporary":false}]},
+    {"id":"11111111-0000-4000-8000-000000000003","username":"operations.primary","email":"operations.primary@example.test","emailVerified":true,"enabled":true,"firstName":"Operations","lastName":"Primary","realmRoles":["operator"],"credentials":[{"type":"password","value":"${IDENTITY_OPERATOR_PASSWORD}","temporary":false}]}
+  ]
+}

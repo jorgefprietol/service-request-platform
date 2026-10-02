@@ -5,7 +5,11 @@ import java.util.Objects;
 import java.util.UUID;
 
 public record ServiceRequest(UUID id, String title, String description, Priority priority,
-        Status status, String owner, Instant createdAt, Instant slaDueAt, long version) {
+        Status status, String owner, Instant createdAt, Instant slaDueAt, long version, String assignedTo) {
+    public ServiceRequest(UUID id, String title, String description, Priority priority, Status status,
+            String owner, Instant createdAt, Instant slaDueAt, long version) {
+        this(id, title, description, priority, status, owner, createdAt, slaDueAt, version, null);
+    }
     public ServiceRequest {
         Objects.requireNonNull(id);
         new RequestDraft(title, description, priority);
@@ -14,11 +18,19 @@ public record ServiceRequest(UUID id, String title, String description, Priority
         Objects.requireNonNull(createdAt);
         if (slaDueAt == null || !slaDueAt.isAfter(createdAt)) throw new DomainException("SLA deadline must follow creation");
         if (version < 0) throw new DomainException("Version must be non-negative");
+        if (assignedTo != null && (assignedTo.isBlank() || assignedTo.length() > 200)) throw new DomainException("Assigned subject must contain 1 to 200 characters");
     }
 
     public ServiceRequest transitionTo(Status next) {
         if (next == null || !status.permits(next)) throw new DomainException("Transition from " + status + " to " + next + " is not allowed");
-        return new ServiceRequest(id, title, description, priority, next, owner, createdAt, slaDueAt, version + 1);
+        return new ServiceRequest(id, title, description, priority, next, owner, createdAt, slaDueAt, version + 1, assignedTo);
+    }
+
+    public ServiceRequest assignTo(String subject) {
+        if (status == Status.CLOSED || status == Status.CANCELLED) throw new DomainException("Terminal requests cannot be assigned");
+        if (subject == null || subject.isBlank() || subject.length() > 200) throw new DomainException("Operator subject is required");
+        if (subject.equals(assignedTo)) return this;
+        return new ServiceRequest(id, title, description, priority, status, owner, createdAt, slaDueAt, version + 1, subject);
     }
 
     public boolean overdueAt(Instant now) {

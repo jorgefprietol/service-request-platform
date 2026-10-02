@@ -82,6 +82,7 @@ erDiagram
         string priority
         string status
         string owner
+        string assigned_to FK
         timestamp created_at
         timestamp sla_due_at
         bigint version
@@ -94,6 +95,17 @@ erDiagram
         string action
         string actor
         timestamp occurred_at
+        string detail
+    }
+    OPERATOR_PROFILE ||--o{ SERVICE_REQUEST : assigned
+    SERVICE_REQUEST ||--o| SLA_ALERT : detects
+    OPERATOR_PROFILE {
+        string subject PK
+        string display_name
+    }
+    SLA_ALERT {
+        uuid request_id PK,FK
+        timestamp detected_at
     }
 ```
 
@@ -149,4 +161,12 @@ KISS y YAGNI guían un único servicio y transacciones locales. DRY centraliza c
 
 ## Límites
 
-La auditoría protege integridad de la API, pero no es almacenamiento WORM ni prueba criptográfica. El servicio no envía notificaciones ni ejecuta pagos. El vencimiento se deriva al consultar, sin scheduler. Reapertura conserva el plazo original. La paginación por offset puede variar bajo nuevas inserciones; no promete una fotografía consistente entre páginas.
+La auditoría protege integridad de la API, pero no es almacenamiento WORM ni prueba criptográfica. El servicio no envía mensajes externos ni ejecuta pagos. El vencimiento se deriva al consultar y un monitor periódico guarda alertas durables con unicidad por solicitud. Reapertura conserva el plazo original y reactiva la detección previa si sigue vencida. La paginación por offset puede variar bajo nuevas inserciones; no promete una fotografía consistente entre páginas.
+
+## Identidad y asignación
+
+La consola usa Authorization Code con PKCE. Spring Security valida firma RS256, emisor, audiencia y fechas del access token antes de mapear únicamente roles requester/operator. El subject del JWT identifica propietario, actor y operador asignado; el nombre visible no determina permisos. El transporte usa el emisor público y obtiene claves mediante la dirección interna configurada del proveedor.
+
+`OperatorDirectory` y `AssignmentService` mantienen el caso de uso de asignación separado de creación y transiciones. Asignación y auditoría comparten transacción y control optimista; asignar de nuevo el mismo operador con la revisión vigente es una operación sin cambios. El catálogo conserva operadores autenticados previamente y no concede acceso por estar registrado: cada petición sigue requiriendo un token vigente con el rol adecuado.
+
+`SlaAlertStore` aplica una inserción selectiva con `ON CONFLICT DO NOTHING`. Varios monitores pueden detectar una misma solicitud sin duplicar alertas. La consulta muestra alertas solo para OPEN/IN_PROGRESS y limita la respuesta a 100 elementos; el registro persiste para conservar trazabilidad de detección.

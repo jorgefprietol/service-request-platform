@@ -37,5 +37,11 @@ management:
         readiness:
           include: readinessState,db
 platform:
-  requester-token: ${REQUESTER_TOKEN}
-  operator-token: ${OPERATOR_TOKEN}
+  auth-mode: ${PLATFORM_AUTH_MODE:oidc}
+  requester-token: ${REQUESTER_TOKEN:}
+  operator-token: ${OPERATOR_TOKEN:}
+  oidc-issuer: ${OIDC_ISSUER:http://127.0.0.1:18112/realms/service-requests}
+  oidc-jwks: ${OIDC_JWKS:http://127.0.0.1:18112/realms/service-requests/protocol/openid-connect/certs}
+  oidc-audience: service-request-api
+  public-url: ${APP_PUBLIC_URL:http://127.0.0.1:18110/}
+  sla-scan-interval-ms: ${SLA_SCAN_INTERVAL_MS:15000}

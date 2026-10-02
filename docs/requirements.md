@@ -31,8 +31,10 @@ Elicitación prevista para una adopción: entrevistar a responsables de soporte,
 | RF-09 | Como usuario, opero desde una consola accesible | Should | Formularios etiquetados, estado anunciado, contenido insertado como texto |
 | RF-10 | Como integrador, consulto un contrato de API | Should | OpenAPI versionado y disponible en HTTP |
 | RF-11 | Como mantenedor, publico una imagen validada | Must | GitHub Actions conserva pruebas y publica el artefacto probado por SHA |
-| RF-12 | Como organización, envío alertas y asigno agentes individuales | Could | Pendiente en roadmap |
+| RF-12 | Como operador, asigno atención a una identidad registrada | Must | Subject de operador verificado, ETag vigente, auditoría con actor y destinatario |
 | RF-13 | Como organización, facturo contratos de atención | Won't | Fuera del alcance actual |
+| RF-14 | Como usuario, ingreso con identidad OIDC individual | Must | Firma, issuer, audience y vigencia válidos; usuarios distintos quedan aislados |
+| RF-15 | Como operador, consulto alertas de SLA vencido | Should | Una alerta durable por solicitud; reinicio conserva detección; estados terminales suprimen alertas activas |
 
 ## Requisitos de calidad
 
@@ -48,8 +50,11 @@ Elicitación prevista para una adopción: entrevistar a responsables de soporte,
 | RNF-08 | Portabilidad | Misma verificación Java en Windows y Linux; imagen Linux reproducible | Matriz CI y Docker |
 | RNF-09 | Entrega | Ningún artefacto publicado con pruebas fallidas o hallazgos HIGH/CRITICAL corregibles | Dependencias entre jobs CI |
 | RNF-10 | Eficiencia | Listado limitado a 100; índices por propietario/fecha; pool de 8 conexiones | SQL y pruebas de paginación |
+| RNF-11 | Identidad | El nombre literal operator no otorga permisos; el subject autenticado identifica propietario y actor | Pruebas JWT, API y Keycloak real |
 
 No se declara un SLO de latencia o disponibilidad de producción: requiere carga representativa, infraestructura y mediciones propias. Los plazos SLA permanecen fijos al reabrir una solicitud y no se pausan.
+
+Los permisos se derivan de roles del JWT validado. El directorio de asignación contiene operadores que ya autenticaron `/api/me`; registra el rol observado en esa conexión y no reemplaza un directorio corporativo sincronizado. El monitor consulta vencimientos cada cinco segundos en Compose y conserva una detección por solicitud. Las alertas son internas; correo y mensajería externa requieren un outbox y autorización específica para su destino.
 
 ## Priorización complementaria
 

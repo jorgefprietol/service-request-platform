@@ -12,10 +12,17 @@ services:
       DATABASE_PASSWORD: ${DATABASE_PASSWORD:?Run python scripts/init_env.py}
       REQUESTER_TOKEN: ${REQUESTER_TOKEN:?Run python scripts/init_env.py}
       OPERATOR_TOKEN: ${OPERATOR_TOKEN:?Run python scripts/init_env.py}
+      PLATFORM_AUTH_MODE: oidc
+      OIDC_ISSUER: http://127.0.0.1:${IDENTITY_PORT:-18112}/realms/service-requests
+      OIDC_JWKS: http://identity:8080/realms/service-requests/protocol/openid-connect/certs
+      APP_PUBLIC_URL: http://127.0.0.1:${APP_PORT:-18110}/
+      SLA_SCAN_INTERVAL_MS: 5000
     ports:
       - "127.0.0.1:${APP_PORT:-18110}:8080"
     depends_on:
       database:
+        condition: service_healthy
+      identity:
         condition: service_healthy
     restart: unless-stopped
     read_only: true
@@ -53,8 +60,39 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+  identity:
+    image: quay.io/keycloak/keycloak:26.7.3@sha256:29be7252db0a106f1cd2ac17b9a56ff2668073da645638a38b9fc67deeb2d6c4
+    command: [start-dev, --import-realm]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: platform-admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${IDENTITY_ADMIN_PASSWORD:?Run python scripts/init_env.py}
+      KC_HOSTNAME: http://127.0.0.1:${IDENTITY_PORT:-18112}
+      KC_HEALTH_ENABLED: "true"
+      APP_PUBLIC_URL: http://127.0.0.1:${APP_PORT:-18110}/
+      APP_ORIGIN: http://127.0.0.1:${APP_PORT:-18110}
+      IDENTITY_REQUESTER_PASSWORD: ${IDENTITY_REQUESTER_PASSWORD:?Run python scripts/init_env.py}
+      IDENTITY_SECOND_REQUESTER_PASSWORD: ${IDENTITY_SECOND_REQUESTER_PASSWORD:?Run python scripts/init_env.py}
+      IDENTITY_OPERATOR_PASSWORD: ${IDENTITY_OPERATOR_PASSWORD:?Run python scripts/init_env.py}
+    ports:
+      - "127.0.0.1:${IDENTITY_PORT:-18112}:8080"
+    volumes:
+      - identity-data:/opt/keycloak/data
+      - ./identity/service-requests-realm.json:/opt/keycloak/data/import/service-requests-realm.json:ro
+    healthcheck:
+      test: [CMD, bash, -c, "exec 3<>/dev/tcp/127.0.0.1/9000; printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3; read -r line <&3; [[ $$line == *' 200 '* ]]"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 18
+    restart: unless-stopped
+    mem_limit: 768m
+    cpus: 0.75
+    pids_limit: 160
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
 volumes:
   request-data:
+  identity-data:
 networks:
   default:
     ipam:

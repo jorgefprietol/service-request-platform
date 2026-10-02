@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/jorgefprietol/service-request-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/jorgefprietol/service-request-platform/actions/workflows/ci.yml)
 
-Plataforma de operaciones para registrar solicitudes, priorizar atención, aplicar plazos de SLA y conservar una auditoría transaccional. Implementada en **Java 21, Spring Boot y PostgreSQL**, con una consola web, contrato OpenAPI y entrega de contenedores mediante GitHub Actions.
+Plataforma de operaciones para registrar solicitudes, asignar operadores, aplicar plazos de SLA y conservar una auditoría transaccional. Implementada en **Java 21, Spring Boot, PostgreSQL y OIDC**, con una consola web, contrato OpenAPI y entrega de contenedores mediante GitHub Actions.
 
 El diseño conecta requisitos de negocio con casos de uso, reglas de dominio, adaptadores y pruebas. Las dependencias de arquitectura se verifican automáticamente con ArchUnit.
 
@@ -12,7 +12,10 @@ El diseño conecta requisitos de negocio con casos de uso, reglas de dominio, ad
 - Priorización `LOW`, `NORMAL`, `HIGH`, `CRITICAL` con plazos de 72, 24, 8 y 2 horas continuas.
 - Flujo de atención con reapertura y estados terminales; cada cambio requiere la versión vigente.
 - Plantillas inmutables para provisión de acceso e interrupción de servicio.
-- Visibilidad por identidad y permisos de operador para transiciones y métricas.
+- Usuarios individuales mediante OIDC, con firma, emisor, audiencia y vigencia verificados.
+- Visibilidad por subject autenticado y permisos por roles para transiciones, asignación y métricas.
+- Asignación a operadores registrados, con revisión vigente y auditoría del actor y destinatario.
+- Monitor de SLA con alertas persistentes, deduplicadas y visibles en la consola de operaciones.
 - Persistencia y auditoría en una misma transacción; fallos parciales producen rollback.
 - Readiness dependiente de PostgreSQL, liveness independiente y recuperación verificada.
 
@@ -35,12 +38,20 @@ Requisitos: Docker con contenedores Linux, Docker Compose y Python 3.11 o superi
 git clone https://github.com/jorgefprietol/service-request-platform.git
 cd service-request-platform
 python scripts/init_env.py
-docker compose up -d --build --wait --wait-timeout 180
+docker compose up -d --build --wait --wait-timeout 300
 ```
 
-Consola: **http://127.0.0.1:18110**. Contrato: **http://127.0.0.1:18110/openapi.yaml**.
+Consola: **http://127.0.0.1:18110**. Identidad local: **http://127.0.0.1:18112**. Contrato: **http://127.0.0.1:18110/openapi.yaml**.
 
-El generador conserva cualquier `.env` existente y no imprime secretos. Obtén `REQUESTER_TOKEN` u `OPERATOR_TOKEN` de tu archivo local `.env` para conectar la consola. La credencial permanece únicamente en memoria en esa pestaña; al desconectar o recargar se elimina.
+Selecciona **Ingresar con identidad** en la consola. El flujo usa Authorization Code con PKCE, y el access token permanece únicamente en memoria. El generador conserva las credenciales existentes, añade configuración faltante y no imprime secretos.
+
+| Cuenta local de verificación | Rol | Contraseña en `.env` |
+| --- | --- | --- |
+| `requester.one` | Solicitante | `IDENTITY_REQUESTER_PASSWORD` |
+| `requester.two` | Solicitante | `IDENTITY_SECOND_REQUESTER_PASSWORD` |
+| `operations.primary` | Operador | `IDENTITY_OPERATOR_PASSWORD` |
+
+Cada cuenta tiene un subject propio emitido por Keycloak. Un operador aparece en el directorio de asignación después de conectarse. Las cuentas incluidas son identidades de verificación del entorno local, con contraseñas aleatorias; no representan usuarios de una organización externa.
 
 El contenedor de la API ejecuta UID 10001, filesystem de solo lectura, capacidades eliminadas y límites de recursos. El puerto se publica en loopback; PostgreSQL permanece dentro de la red de Compose. Los datos se guardan en un volumen persistente.
 
@@ -55,6 +66,10 @@ El contenedor de la API ejecuta UID 10001, filesystem de solo lectura, capacidad
 | Auditar | `GET /api/requests/{id}/history` | Mismo alcance de visibilidad |
 | Plantillas | `GET /api/templates` | Bearer token |
 | Instanciar | `POST /api/templates/{templateId}/requests` | Bearer token e idempotencia |
+| Identidad | `GET /api/me` | Subject, nombre visible y roles verificados |
+| Operadores | `GET /api/operators` | Operador; directorio de identidades registradas |
+| Asignar | `POST /api/requests/{id}/assignment` | Operador, subject registrado e `If-Match` |
+| Alertas SLA | `GET /api/alerts` | Operador; hasta 100 alertas activas |
 | Readiness | `GET /actuator/health/readiness` | Público, sin detalles internos |
 | Métricas | `GET /actuator/metrics` | Operador |
 
@@ -65,7 +80,8 @@ $settings = @{}
 Get-Content .env | ForEach-Object {
     if ($_ -match '^([^#=]+)=(.*)$') { $settings[$Matches[1]] = $Matches[2] }
 }
-$headers = @{ Authorization = "Bearer $($settings.REQUESTER_TOKEN)"; 'Idempotency-Key' = [guid]::NewGuid().ToString() }
+$access = Invoke-RestMethod 'http://127.0.0.1:18112/realms/service-requests/protocol/openid-connect/token' -Method Post -Body @{ grant_type = 'password'; client_id = 'service-request-verification'; username = 'requester.one'; password = $settings.IDENTITY_REQUESTER_PASSWORD }
+$headers = @{ Authorization = "Bearer $($access.access_token)"; 'Idempotency-Key' = [guid]::NewGuid().ToString() }
 $body = @{ title = 'Restaurar servicio de inventario'; description = 'Investigar interrupción y recuperar disponibilidad'; priority = 'HIGH' } | ConvertTo-Json
 Invoke-RestMethod 'http://127.0.0.1:18110/api/requests' -Method Post -Headers $headers -ContentType 'application/json' -Body $body
 ```
@@ -82,7 +98,7 @@ mvn -B -ntp verify
 python scripts/e2e.py
 ```
 
-Las pruebas cubren dominio, todas las combinaciones de estados, API, permisos, transacciones, carreras y reglas de dependencia. JaCoCo exige **90% de líneas del paquete de dominio**. La verificación end-to-end usa PostgreSQL real, introduce un fallo de auditoría, reinicia la API y prueba una interrupción de base de datos. Genera `artifacts/e2e.json`; crea solicitudes de verificación en el entorno local.
+Las pruebas cubren dominio, todas las combinaciones de estados, API, permisos, transacciones, carreras y reglas de dependencia. JaCoCo exige **90% de líneas del paquete de dominio**. La verificación end-to-end usa PostgreSQL y Keycloak reales, comprueba JWT y aislamiento entre usuarios, introduce un fallo de auditoría, verifica asignación y alertas, reinicia la API y prueba una interrupción de base de datos. Genera `artifacts/e2e.json`; crea solicitudes de verificación en el entorno local.
 
 ## Entrega
 
@@ -100,6 +116,6 @@ GitHub Actions conserva evidencias de pruebas, cobertura, integración y anális
 - [Evolución y deuda técnica](docs/roadmap.md)
 - [Descripción profesional del proyecto](docs/experience.md)
 
-El alcance actual es un proyecto independiente de ingeniería con despliegue local. Usa dos identidades de máquina configurables; un despliegue compartido requiere identidad individual, TLS y controles perimetrales. Los SLA son plazos en horas continuas y no representan calendarios laborales ni compromisos contractuales. La auditoría es append-only a través de la API; un administrador de base de datos conserva capacidad de modificarla.
+El alcance actual es un proyecto independiente de ingeniería con despliegue local. Keycloak usa `start-dev` y un volumen local para demostrar el flujo OIDC; una adopción compartida requiere un proveedor configurado para producción, TLS, controles perimetrales y backups. El cliente con password grant se reserva para comprobaciones automatizadas y debe deshabilitarse fuera de ese entorno. Los tokens estáticos solo se aceptan bajo el modo explícito `development-tokens`, utilizado por pruebas rápidas. Los SLA son plazos en horas continuas; las alertas se consultan en la plataforma, sin correo ni mensajes externos. La auditoría es append-only a través de la API; un administrador de base de datos conserva capacidad de modificarla.
 
 Autor: **Jorge Prieto**. Licencia MIT.

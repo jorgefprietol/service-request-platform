@@ -16,9 +16,13 @@ Aceptada. Una clave por principal y contenido identifica una creación. La unici
 
 Aceptada. Cada creación y transición persiste su entrada de auditoría dentro de la transacción del agregado. Alternativa: escribir logs o publicar eventos después del commit sin outbox. Consecuencia: un fallo de auditoría revierte la operación; mayor latencia de escritura aceptada por integridad. Para integración externa se evaluará un outbox durable. La API no permite editar auditorías; no existe protección ante administradores DB.
 
-## ADR-005 — Credenciales de máquina y despliegue local
+## ADR-005 — OIDC individual y despliegue local
 
-Aceptada para el alcance actual. Dos credenciales aleatorias, distintas, identifican requester y operator. El contenedor no arranca con tokens cortos o iguales. Alternativa: OIDC, elegido para una futura adopción multiusuario. Consecuencia: operación local reproducible; todas las sesiones del mismo token comparten identidad, sin asignación personal ni revocación por usuario. La consola guarda tokens en memoria y no usa cookies de autenticación; API sin CSRF por su autenticación bearer explícita y stateless.
+Aceptada. OIDC es el modo predeterminado; Keycloak suministra identidades individuales y la consola utiliza Authorization Code con PKCE. La API valida firma, issuer, audience, fechas y subject, y autoriza por roles. Los tokens permanecen en memoria de la consola; el verificador PKCE y state se conservan temporalmente en sessionStorage durante la redirección y se eliminan al consumirlos. Alternativa: tokens de máquina compartidos, disponibles solo bajo el modo explícito development-tokens para pruebas rápidas. Consecuencia: atribución individual y aislamiento por subject, con una dependencia adicional de identidad. El proveedor local usa start-dev; una adopción externa exige configuración de producción y TLS.
+
+## ADR-008 — Asignación y alertas persistentes
+
+Aceptada. Asignación comparte la revisión del agregado y transacción de auditoría. Solo se aceptan subjects de operadores que ya se autenticaron y quedaron registrados. El monitor SLA persiste una detección por solicitud mediante una clave única, sin enviar mensajes externos. Consecuencia: alertas sobreviven reinicios y no se duplican entre monitores; la asignación usa un directorio observado, que requerirá sincronización si una organización exige comprobar altas y bajas en tiempo real.
 
 ## ADR-006 — Entregar el artefacto probado
 

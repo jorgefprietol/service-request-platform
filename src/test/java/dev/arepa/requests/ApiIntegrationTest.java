@@ -16,8 +16,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
 @SpringBootTest(properties={
+        "platform.auth-mode=development-tokens",
         "spring.datasource.url=jdbc:h2:mem:requests;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
         "spring.datasource.username=sa", "spring.datasource.password=",
         "platform.requester-token=rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
@@ -33,6 +36,8 @@ class ApiIntegrationTest {
     @Autowired RequestStore store;
     @Autowired UnitOfWork transactions;
     @Autowired JdbcTemplate jdbc;
+    @Autowired SlaAlertStore alerts;
+    @Autowired AssignmentService assignments;
 
     JsonNode create(String key, String token) throws Exception {
         return json.readTree(mvc.perform(post("/api/requests").header("Authorization",token).header("Idempotency-Key",key).contentType(MediaType.APPLICATION_JSON).content(BODY)).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).get("request");
@@ -148,5 +153,49 @@ class ApiIntegrationTest {
             assertThat(store.history(request.id())).hasSize(2);
             assertThat(store.find(request.id()).orElseThrow().version()).isEqualTo(1);
         }
+    }
+
+    @Test void oidcSubjectsAndRolesDriveVisibilityAndAudit() throws Exception {
+        var key = UUID.randomUUID().toString();
+        var response = mvc.perform(post("/api/requests").with(jwt().jwt(claims -> claims.subject("alice-subject")).authorities(new SimpleGrantedAuthority("ROLE_REQUESTER")))
+                .header("Idempotency-Key",key).contentType(MediaType.APPLICATION_JSON).content(BODY)).andExpect(status().isCreated()).andReturn();
+        var id = json.readTree(response.getResponse().getContentAsString()).get("request").get("id").asText();
+        mvc.perform(get("/api/requests/" + id).with(jwt().jwt(claims -> claims.subject("bob-subject")).authorities(new SimpleGrantedAuthority("ROLE_REQUESTER")))).andExpect(status().isNotFound());
+        // A username/subject literally called operator does NOT grant operator visibility.
+        mvc.perform(get("/api/requests/" + id).with(jwt().jwt(claims -> claims.subject("operator")).authorities(new SimpleGrantedAuthority("ROLE_REQUESTER")))).andExpect(status().isNotFound());
+        mvc.perform(post("/api/requests/" + id + "/transitions").with(jwt().jwt(claims -> claims.subject("operations-user-uuid")).authorities(new SimpleGrantedAuthority("ROLE_OPERATOR")))
+                .header("If-Match","\"0\"").contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"IN_PROGRESS\"}")).andExpect(status().isOk());
+        mvc.perform(get("/api/requests/" + id + "/history").with(jwt().jwt(claims -> claims.subject("alice-subject")).authorities(new SimpleGrantedAuthority("ROLE_REQUESTER"))))
+                .andExpect(jsonPath("$[0].actor").value("alice-subject")).andExpect(jsonPath("$[1].actor").value("operations-user-uuid"));
+    }
+
+    @Test void assignmentsRequireRegisteredOperatorsAndCurrentRevision() throws Exception {
+        var operatorSubject = UUID.randomUUID().toString();
+        mvc.perform(get("/api/me").with(jwt().jwt(claims -> claims.subject(operatorSubject).claim("preferred_username","on-call.engineer")).authorities(new SimpleGrantedAuthority("ROLE_OPERATOR"))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.subject").value(operatorSubject));
+        var id = create(UUID.randomUUID().toString(),REQUESTER).get("id").asText();
+        var body = "{\"operatorSubject\":\"" + operatorSubject + "\"}";
+        mvc.perform(post("/api/requests/" + id + "/assignment").header("Authorization",REQUESTER).header("If-Match","\"0\"").contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
+        mvc.perform(post("/api/requests/" + id + "/assignment").header("Authorization",OPERATOR).header("If-Match","\"0\"").contentType(MediaType.APPLICATION_JSON).content("{\"operatorSubject\":\"unknown\"}")).andExpect(status().isBadRequest());
+        mvc.perform(post("/api/requests/" + id + "/assignment").header("Authorization",OPERATOR).header("If-Match","\"0\"").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.request.assignedTo").value(operatorSubject)).andExpect(header().string("ETag","\"1\""));
+        mvc.perform(post("/api/requests/" + id + "/assignment").header("Authorization",OPERATOR).header("If-Match","\"0\"").contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isConflict());
+        mvc.perform(post("/api/requests/" + id + "/assignment").header("Authorization",OPERATOR).header("If-Match","\"1\"").contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isOk()).andExpect(header().string("ETag","\"1\""));
+        assertThat(store.history(UUID.fromString(id))).hasSize(2);
+        assertThat(store.history(UUID.fromString(id)).getLast().detail()).isEqualTo(operatorSubject);
+    }
+
+    @Test void slaAlertsAreDurableDeduplicatedAndSuppressTerminalRequests() {
+        var id = UUID.randomUUID();
+        var now = java.time.Instant.now();
+        var expired = new ServiceRequest(id,"Expired incident","Test alert",Priority.CRITICAL,Status.OPEN,"requester",now.minusSeconds(7201),now.minusSeconds(1),0);
+        transactions.execute(() -> { store.insert(expired,"expired:" + id,"f".repeat(64)); store.appendAudit(id,new RequestStore.AuditEntry(0,"CREATED","requester",now)); return null; });
+        alerts.detect(now); alerts.detect(now);
+        assertThat(alerts.active(100)).extracting(SlaAlertStore.Alert::requestId).contains(id);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sla_alert WHERE request_id = ?",Long.class,id)).isEqualTo(1);
+        service.execute(new TransitionRequest(id,Status.CANCELLED,0,"operator"));
+        alerts.detect(now);
+        assertThat(alerts.active(100)).extracting(SlaAlertStore.Alert::requestId).doesNotContain(id);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sla_alert WHERE request_id = ?",Long.class,id)).isEqualTo(1);
     }
 }

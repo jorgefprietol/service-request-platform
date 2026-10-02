@@ -9,14 +9,15 @@ Diseño e implementación de una plataforma de solicitudes de servicio con Java 
 - Definición de requisitos funcionales y atributos de calidad, priorización MoSCoW y criterios de aceptación vinculados a pruebas.
 - Diseño de un dominio inmutable, flujo de estados y políticas SLA extensibles mediante interfaces.
 - Implementación de creación idempotente y control optimista de concurrencia con garantías apoyadas por constraints y transacciones PostgreSQL.
-- Desarrollo de API REST, plantillas, consola operativa, autorización por rol y contrato OpenAPI.
+- Desarrollo de API REST, plantillas, consola operativa, identidad individual OIDC con PKCE, autorización por rol y contrato OpenAPI.
+- Implementación de asignación a operadores con revisión vigente y alertas SLA persistentes y deduplicadas.
 - Validación de rollback, persistencia tras reinicios, aislamiento de datos y comportamiento ante interrupciones de base de datos.
 - Automatización de pruebas, cobertura, análisis de arquitectura, escaneo, SBOM y publicación de la imagen verificada en GHCR con procedencia.
 - Documentación de decisiones arquitectónicas, modelo de datos, diagramas de clases, operación y evolución.
 
 ## Descripción breve para perfil profesional
 
-> Diseñé e implementé Service Request Platform, una plataforma de operaciones en Java y PostgreSQL con arquitectura limpia, SLA por prioridad, idempotencia durable, auditoría transaccional y control de concurrencia. Integré pruebas automatizadas y una entrega Docker mediante GitHub Actions, con análisis de seguridad, SBOM y procedencia del artefacto.
+> Diseñé e implementé Service Request Platform, una plataforma de operaciones en Java y PostgreSQL con arquitectura limpia, identidad OIDC individual, asignación de operadores, alertas SLA, idempotencia durable, auditoría transaccional y control de concurrencia. Integré pruebas automatizadas y una entrega Docker mediante GitHub Actions, con análisis de seguridad, SBOM y procedencia del artefacto.
 
 Repositorio y evidencia: [Service Request Platform](https://github.com/jorgefprietol/service-request-platform), [GitHub Actions](https://github.com/jorgefprietol/service-request-platform/actions) y [registro de verificación](verification.md).
 

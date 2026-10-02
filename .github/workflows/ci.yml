@@ -59,7 +59,7 @@ jobs:
       - name: Build once and start PostgreSQL stack
         run: |
           docker build --build-arg SOURCE_REVISION="${{ github.sha }}" -t "$APP_IMAGE" .
-          docker compose up -d --no-build --wait --wait-timeout 180
+          docker compose up -d --no-build --wait --wait-timeout 300
       - name: Verify HTTP behavior, races, rollback, outage and restart recovery
         run: |
           python3 scripts/e2e.py

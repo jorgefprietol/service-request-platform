@@ -8,6 +8,65 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /api/auth/config:
+    get:
+      security: []
+      operationId: publicIdentityConfiguration
+      responses:
+        '200':
+          description: Public issuer, client ID and redirect URI for authorization code with PKCE
+  /api/me:
+    get:
+      operationId: authenticatedIdentity
+      responses:
+        '200':
+          description: Verified subject, display name and roles; records authenticated operators in the assignment directory
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/operators:
+    get:
+      operationId: listOperators
+      responses:
+        '200':
+          description: Up to 100 operators registered after a verified login; operator role required
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/alerts:
+    get:
+      operationId: activeSlaAlerts
+      responses:
+        '200':
+          description: Up to 100 durable overdue alerts for open or in-progress requests, ordered by deadline; operator role required
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/requests/{id}/assignment:
+    parameters:
+      - {$ref: '#/components/parameters/RequestId'}
+    post:
+      operationId: assignOperator
+      summary: Assign a registered operator using optimistic concurrency
+      parameters:
+        - in: header
+          name: If-Match
+          required: true
+          schema: {type: string, pattern: '^"[0-9]{1,18}"$'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [operatorSubject]
+              properties:
+                operatorSubject: {type: string, minLength: 1, maxLength: 200}
+      responses:
+        '200':
+          description: Assigned request; repeating the same target at the current version is a no-op
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RequestView'}
+        '400': {$ref: '#/components/responses/Invalid'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
   /api/requests:
     get:
       operationId: listRequests
@@ -186,7 +245,8 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: Distinct configured machine tokens for requester and operator roles
+      bearerFormat: JWT
+      description: OIDC access token with valid signature, issuer, audience service-request-api and requester/operator realm role. Development tokens require an explicit alternative mode.
   parameters:
     RequestId:
       in: path
@@ -212,7 +272,7 @@ components:
         priority: {$ref: '#/components/schemas/Priority'}
     ServiceRequest:
       type: object
-      required: [id, title, description, priority, status, owner, createdAt, slaDueAt, version]
+      required: [id, title, description, priority, status, owner, createdAt, slaDueAt, version, assignedTo]
       properties:
         id: {type: string, format: uuid}
         title: {type: string}
@@ -223,6 +283,7 @@ components:
         createdAt: {type: string, format: date-time}
         slaDueAt: {type: string, format: date-time}
         version: {type: integer, format: int64, minimum: 0}
+        assignedTo: {type: string, nullable: true, description: Registered operator subject}
     RequestView:
       type: object
       required: [request, overdue]

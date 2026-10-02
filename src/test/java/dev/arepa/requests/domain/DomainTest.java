@@ -84,4 +84,19 @@ class DomainTest {
         assertThatThrownBy(() -> new ServiceRequest(UUID.randomUUID(), "Title", "d", Priority.LOW, Status.OPEN, "owner", now, now.plusSeconds(1), -1)).isInstanceOf(DomainException.class);
         assertThatThrownBy(() -> request(Status.OPEN).transitionTo(null)).isInstanceOf(DomainException.class);
     }
+
+    @Test void assignmentIsImmutableAndTerminalRequestsRejectIt() {
+        var initial = request(Status.OPEN);
+        var assigned = initial.assignTo("subject-123");
+        assertThat(initial.assignedTo()).isNull();
+        assertThat(assigned.assignedTo()).isEqualTo("subject-123");
+        assertThat(assigned.version()).isEqualTo(1);
+        assertThat(assigned.assignTo("subject-123")).isSameAs(assigned);
+        assertThat(assigned.transitionTo(Status.IN_PROGRESS).assignedTo()).isEqualTo("subject-123");
+        assertThatThrownBy(() -> request(Status.CLOSED).assignTo("subject-123")).isInstanceOf(DomainException.class);
+        assertThatThrownBy(() -> request(Status.CANCELLED).assignTo("subject-123")).isInstanceOf(DomainException.class);
+        assertThatThrownBy(() -> initial.assignTo(null)).isInstanceOf(DomainException.class);
+        assertThatThrownBy(() -> initial.assignTo(" ")).isInstanceOf(DomainException.class);
+        assertThatThrownBy(() -> initial.assignTo("x".repeat(201))).isInstanceOf(DomainException.class);
+    }
 }
